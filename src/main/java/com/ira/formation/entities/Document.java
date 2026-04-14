@@ -17,7 +17,8 @@ public class Document {
     private Long id;
 
     private String nom;
-
+    
+    @Column(nullable = false)
     private String filePath;
 
     @ManyToOne

@@ -10,6 +10,11 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Table(
+	    uniqueConstraints = @UniqueConstraint(
+	        columnNames = {"titre", "formation_id"}
+	    )
+	)
 public class Module {
 
     @Id

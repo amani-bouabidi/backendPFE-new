@@ -54,6 +54,13 @@ public class ModuleService {
     public ModuleDTO creerModule(ModuleDTO dto) {
 
         Module module = mapToEntity(dto);
+        if (moduleRepository.existsByTitreAndFormationId(
+                dto.getTitre(),
+                dto.getFormationId())) {
+
+            throw new RuntimeException(
+                    "Module déjà existant dans cette formation");
+        }
 
         Module saved = moduleRepository.save(module);
 

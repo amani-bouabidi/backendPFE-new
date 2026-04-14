@@ -9,5 +9,6 @@ import java.util.List;
 public interface ModuleRepository extends JpaRepository<Module, Long> {
 
     List<Module> findByFormation(Formation formation);
+    boolean existsByTitreAndFormationId(String titre, Long formationId);
 
 }
