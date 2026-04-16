@@ -1,84 +1,79 @@
 package com.ira.formation.controllers;
-import com.ira.formation.dto.*;
-import com.ira.formation.entities.Formation;
-import com.ira.formation.entities.Utilisateur;
+
+import com.ira.formation.dto.FormationDTO;
+import com.ira.formation.dto.FormationFullDTO;
 import com.ira.formation.services.FormationService;
-import com.ira.formation.repositories.UtilisateurRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
 import java.security.Principal;
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/formations")
-@CrossOrigin(origins = "http://localhost:4200")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:4200")
 public class FormationController {
 
     private final FormationService formationService;
-    private final UtilisateurRepository utilisateurRepository;
+
+    // =================== ADMIN CRUD ===================
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<FormationDTO> creerFormation(@RequestBody FormationDTO dto) {
-        return ResponseEntity.status(201).body(formationService.creerFormation(dto));
-    }
-
-    @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Page<FormationDTO>> getAllFormations(Pageable pageable) {
-        return ResponseEntity.ok(formationService.getAllFormations(pageable));
-    }
-    
-    @GetMapping("/all")
-    @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<List<FormationDTO>> getAllFormationsSimple() {
-        return ResponseEntity.ok(formationService.getAllFormations());
-    }
-
-    @GetMapping("/formateur/{id}")
-    @PreAuthorize("hasRole('ADMIN') or hasRole('FORMATEUR')")
-    public ResponseEntity<List<FormationDTO>> getFormationsParFormateur(@PathVariable Long id) {
-        Utilisateur formateur = utilisateurRepository.findById(id)
-                .orElseThrow(() -> new IllegalArgumentException("Formateur non trouvé"));
-        return ResponseEntity.ok(formationService.getFormationsParFormateur(formateur));
+    public FormationDTO create(@RequestBody FormationDTO dto) {
+        return formationService.create(dto);
     }
 
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<FormationDTO> modifierFormation(
-            @PathVariable Long id,
-            @RequestBody FormationDTO dto) {
-
-        return ResponseEntity.ok(formationService.modifierFormation(id, dto));
+    public FormationDTO update(@PathVariable Long id,
+                               @RequestBody FormationDTO dto) {
+        return formationService.update(id, dto);
     }
 
     @DeleteMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
-    public ResponseEntity<Void> supprimerFormation(@PathVariable Long id) {
-        formationService.supprimerFormation(id);
-        return ResponseEntity.noContent().build();
+    public void delete(@PathVariable Long id) {
+        formationService.delete(id);
     }
-    
-    @GetMapping("/{id}/modules")
-    public FormationModulesDTO getFormationModules(@PathVariable Long id,
-                                                   Principal principal) {
 
-        return formationService.getFormationWithModules(
-                id,
-                principal.getName()
-        );
+    // =================== ADMIN VIEW ===================
+
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<FormationDTO> getAll() {
+        return formationService.getAllAdmin();
     }
+
+    // =================== PUBLIC VISITOR ===================
+
+    @GetMapping("/public")
+    public List<FormationDTO> getPublic() {
+        return formationService.getPublic();
+    }
+
+    // =================== FORMATEUR (FULL CONTENT) ===================
+
+    @GetMapping("/formateur")
+    @PreAuthorize("hasRole('FORMATEUR')")
+    public List<FormationFullDTO> getMyFormations(Principal principal) {
+        return formationService.getMyFormations(principal.getName());
+    }
+
+    // =================== APPRENANT (FULL CONTENT IF INSCRIT) ===================
+
+    @GetMapping("/apprenant")
+    @PreAuthorize("hasRole('APPRENANT')")
+    public List<FormationFullDTO> getMyFormationsApprenant(Principal principal) {
+        return formationService.getMyInscribedFormations(principal.getName());
+    }
+
+    // =================== FILTER BY DOMAINE ===================
+
     @GetMapping("/domaine/{id}")
-    public ResponseEntity<List<FormationDTO>> getFormationsByDomaine(@PathVariable Long id){
-
-        return ResponseEntity.ok(
-                formationService.getFormationsByDomaine(id)
-        );
+    public List<FormationDTO> getByDomaine(@PathVariable Long id) {
+        return formationService.getByDomaine(id);
     }
 }

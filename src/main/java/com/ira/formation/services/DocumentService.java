@@ -102,7 +102,6 @@ public class DocumentService {
     }
 
     // =================== DOWNLOAD ===================
-    @PreAuthorize("hasAnyRole('ADMIN','FORMATEUR','APPRENANT')")
     public ResponseEntity<Resource> downloadDocument(Long id, String email) throws Exception {
 
         // 1. document
@@ -113,24 +112,38 @@ public class DocumentService {
         Utilisateur user = utilisateurRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        // 3. role
         String role = user.getRole().getNom();
 
-        // 4. CHECK inscription (CORRIGÉ)
-        if ("APPRENANT".equalsIgnoreCase(role)) {
+        // 🔐 ADMIN → accès libre
 
-            Long apprenantId = user.getId();
-            Long formationId = doc.getModule().getFormation().getId();
+        if (!"ADMIN".equals(role)) {
 
-            boolean inscrit = inscriptionRepository
-                    .existsByApprenantIdAndFormationId(apprenantId, formationId);
+            // 🔐 FORMATEUR → فقط formation متاعو
+            if ("FORMATEUR".equals(role)) {
+                if (!doc.getModule().getFormation().getFormateur()
+                        .getEmail().equals(email)) {
 
-            if (!inscrit) {
-                throw new RuntimeException("Accès refusé : vous n'êtes pas inscrit");
+                    throw new RuntimeException("Accès refusé : ce contenu ne vous appartient pas");
+                }
+            }
+
+            // 🔐 APPRENANT → لازم يكون inscrit
+            if ("APPRENANT".equalsIgnoreCase(role)) {
+
+                Long apprenantId = user.getId();
+                Long formationId = doc.getModule().getFormation().getId();
+
+                boolean inscrit = inscriptionRepository
+                        .existsByApprenantIdAndFormationId(apprenantId, formationId);
+
+                if (!inscrit) {
+                    throw new RuntimeException("Accès refusé : vous n'êtes pas inscrit");
+                }
             }
         }
 
-        // 5. file path
+        // ================= FILE =================
+
         File file = new File(doc.getFilePath());
 
         if (!file.exists()) {

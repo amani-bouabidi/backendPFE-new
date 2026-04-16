@@ -10,13 +10,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class UtilisateurUpdateDTO {
-	private String nom;
+
+    private String nom;
     private String prenom;
     private String email;
-
-    // password optionnel → on l'encode seulement s'il est envoyé
     private String password;
-
-    private String roleNom;   // optionnel aussi
-
 }

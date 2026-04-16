@@ -1,17 +1,13 @@
 package com.ira.formation.dto;
 
-import lombok.AllArgsConstructor;
-import lombok.Builder;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import lombok.*;
 
-    @Data
-	@Builder
-	@NoArgsConstructor
-	@AllArgsConstructor
-	public class DomaineDTO {
+@Data
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class DomaineDTO {
 
-	    private Long id;
-	    private String nom;
-	}
-
+    private Long id;
+    private String nom;
+}

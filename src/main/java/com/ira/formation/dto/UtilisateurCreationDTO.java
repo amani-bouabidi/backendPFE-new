@@ -20,9 +20,4 @@ public class UtilisateurCreationDTO {
     @NotBlank(message = "Le mot de passe est obligatoire")
     @Size(min = 8, message = "Mot de passe trop court (min 8)")
     private String password;
-
-    @NotBlank(message = "Le rôle est obligatoire")
-    private String roleNom;   // ex: "FORMATEUR" ou "APPRENANT"
-
-
 }

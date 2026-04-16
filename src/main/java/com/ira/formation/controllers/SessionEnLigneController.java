@@ -2,7 +2,6 @@ package com.ira.formation.controllers;
 
 import com.ira.formation.dto.ApiResponse;
 import com.ira.formation.dto.SessionEnLigneDTO;
-import com.ira.formation.entities.SessionEnLigne;
 import com.ira.formation.services.SessionEnLigneService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -26,29 +25,26 @@ public class SessionEnLigneController {
             @RequestParam String titre,
             Principal principal) {
 
-        SessionEnLigneDTO session =
-                sessionService.creerSession(formationId, titre, principal.getName());
-
-        return ApiResponse.success(session, "Session créée avec succès");
+        return ApiResponse.success(
+                sessionService.creerSession(formationId, titre, principal.getName()),
+                "Session créée avec succès"
+        );
     }
 
-    // =================== GET BY FORMATEUR ===================
+    // =================== FORMATEUR LIST ===================
     @GetMapping("/formateur")
     @PreAuthorize("hasRole('FORMATEUR')")
-    public ApiResponse<List<SessionEnLigneDTO>> listerSessionsParFormateur(
-            Principal principal) {
+    public ApiResponse<List<SessionEnLigneDTO>> listerSessionsParFormateur(Principal principal) {
 
-        List<SessionEnLigneDTO> sessions =
-                sessionService.listerSessionsParFormateur(principal.getName())
-                        .stream()
-                        .map(sessionService::mapToDTO)
-                        .toList();
-
-        return ApiResponse.success(sessions, "Liste des sessions du formateur");
+        return ApiResponse.success(
+                sessionService.listerSessionsParFormateur(principal.getName()),
+                "Liste des sessions du formateur"
+        );
     }
 
-    // =================== GET BY ID ===================
+    // =================== GET SECURE ===================
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('FORMATEUR','APPRENANT')")
     public ApiResponse<SessionEnLigneDTO> getSessionById(
             @PathVariable Long id,
             Principal principal) {
@@ -67,11 +63,8 @@ public class SessionEnLigneController {
             @RequestParam String nouveauTitre,
             Principal principal) {
 
-        SessionEnLigne session =
-                sessionService.mettreAJourTitre(id, nouveauTitre, principal.getName());
-
         return ApiResponse.success(
-                sessionService.mapToDTO(session),
+                sessionService.mettreAJourTitre(id, nouveauTitre, principal.getName()),
                 "Session mise à jour avec succès"
         );
     }
@@ -79,7 +72,7 @@ public class SessionEnLigneController {
     // =================== DELETE ===================
     @DeleteMapping("/supprimer/{id}")
     @PreAuthorize("hasRole('FORMATEUR')")
-    public ApiResponse<String> supprimerSession(
+    public ApiResponse<Void> supprimerSession(
             @PathVariable Long id,
             Principal principal) {
 

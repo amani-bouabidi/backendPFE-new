@@ -2,11 +2,8 @@ package com.ira.formation.services;
 
 import com.ira.formation.dto.*;
 import com.ira.formation.entities.Domaine;
-import com.ira.formation.entities.Formation;
 import com.ira.formation.repositories.DomaineRepository;
-import com.ira.formation.repositories.FormationRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -16,100 +13,91 @@ import java.util.List;
 public class DomaineService {
 
     private final DomaineRepository domaineRepository;
-    private final FormationRepository formationRepository;
 
-    // ✅ CREATE
-    @PreAuthorize("hasRole('ADMIN')")
-    public DomaineDTO createDomaine(DomaineDTO dto){
+    // ================= CREATE =================
+    public DomaineDTO create(DomaineDTO dto) {
 
-        if(domaineRepository.existsByNom(dto.getNom())){
-            throw new RuntimeException("Ce domaine existe déjà");
+        if (domaineRepository.existsByNom(dto.getNom())) {
+            throw new RuntimeException("Domaine déjà existant");
         }
 
-        Domaine domaine = new Domaine();
-        domaine.setNom(dto.getNom());
-
-        Domaine saved = domaineRepository.save(domaine);
-
-        return DomaineDTO.builder()
-                .id(saved.getId())
-                .nom(saved.getNom())
+        Domaine d = Domaine.builder()
+                .nom(dto.getNom())
                 .build();
+
+        return mapToDTO(domaineRepository.save(d));
     }
 
-    // ✅ GET ALL (clean)
-    public List<DomaineDTO> getAllDomaines(){
-
+    // ================= ADMIN LIST =================
+    public List<DomaineDTO> getAll() {
         return domaineRepository.findAll()
                 .stream()
-                .map(d -> DomaineDTO.builder()
-                        .id(d.getId())
-                        .nom(d.getNom())
-                        .build())
+                .map(this::mapToDTO)
                 .toList();
     }
 
-    // ✅ DELETE
-    @PreAuthorize("hasRole('ADMIN')")
-    public void deleteDomaine(Long id){
+    // ================= PUBLIC LIST (simple) =================
+    public List<DomaineDTO> getPublic() {
+        return domaineRepository.findAll()
+                .stream()
+                .map(this::mapToDTO)
+                .toList();
+    }
 
-        Domaine domaine = domaineRepository.findById(id)
+    // ================= DELETE =================
+    public void delete(Long id) {
+
+        Domaine d = domaineRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Domaine non trouvé"));
 
-        // نفصل relations قبل الحذف
-        if(domaine.getFormations() != null){
-            for(Formation f : domaine.getFormations()){
-                f.setDomaine(null);
-                formationRepository.save(f);
-            }
+        domaineRepository.delete(d);
+    }
+
+    // ================= UPDATE =================
+    public DomaineDTO update(Long id, DomaineDTO dto) {
+
+        Domaine d = domaineRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Domaine non trouvé"));
+
+        if (!d.getNom().equals(dto.getNom()) &&
+                domaineRepository.existsByNom(dto.getNom())) {
+            throw new RuntimeException("Nom déjà utilisé");
         }
 
-        domaineRepository.delete(domaine);
+        d.setNom(dto.getNom());
+
+        return mapToDTO(domaineRepository.save(d));
     }
 
-    // ✅ DOMAINES + FORMATIONS
-    public List<DomaineFormationsDTO> getDomainesWithFormations(){
+    // ================= CATALOGUE (FIXED) =================
+    public List<DomainePublicDTO> getCatalogue() {
 
         return domaineRepository.findAll()
                 .stream()
-                .map(domaine -> {
-
-                    List<FormationDTO> formations = domaine.getFormations()
-                            .stream()
-                            .map(f -> FormationDTO.builder()
-                                    .id(f.getId())
-                                    .titre(f.getTitre())
-                                    .description(f.getDescription())
-                                    .formateurId(f.getFormateur() != null ? f.getFormateur().getId() : null)
-                                    .formateurNom(f.getFormateur() != null ? f.getFormateur().getNom() : null)
-                                    .domaineId(domaine.getId())
-                                    .domaineNom(domaine.getNom())
-                                    .build())
-                            .toList();
-
-                    return DomaineFormationsDTO.builder()
-                            .domaineId(domaine.getId())
-                            .nomDomaine(domaine.getNom())
-                            .formations(formations)
-                            .build();
-                })
-                .toList();
-    }
-
-    // ✅ STATS
-    public List<DomaineStatsDTO> getDomainesStats(){
-
-        return domaineRepository.findAll()
-                .stream()
-                .map(domaine -> DomaineStatsDTO.builder()
-                        .domaineId(domaine.getId())
-                        .nomDomaine(domaine.getNom())
-                        .nombreFormations(
-                                domaine.getFormations() != null ?
-                                        (long) domaine.getFormations().size() : 0
+                .map(d -> DomainePublicDTO.builder()
+                        .id(d.getId())
+                        .nom(d.getNom())
+                        .formations(
+                                d.getFormations() == null ? List.of() :
+                                d.getFormations().stream()
+                                        .map(f -> FormationPublicDTO.builder()
+                                                .id(f.getId())
+                                                .titre(f.getTitre())
+                                                .description(f.getDescription())
+                                                .build()
+                                        )
+                                        .toList()
                         )
                         .build()
                 )
                 .toList();
+    }
+
+    // ================= MAPPER =================
+    private DomaineDTO mapToDTO(Domaine d) {
+        return DomaineDTO.builder()
+                .id(d.getId())
+                .nom(d.getNom())
+                .build();
     }
 }

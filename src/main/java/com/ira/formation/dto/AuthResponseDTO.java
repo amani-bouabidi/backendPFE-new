@@ -6,7 +6,7 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class AuthResponseDTO {
-    private String jwt;           // Token principal
-    private String refreshToken;  // Refresh token
-    private String role;          // Rôle de l’utilisateur
+    private String accessToken;
+    private String refreshToken;
+    private String role;
 }

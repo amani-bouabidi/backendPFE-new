@@ -1,7 +1,7 @@
 package com.ira.formation.dto;
 
 import lombok.*;
-
+import java.util.List;
 @Data
 @Builder
 @NoArgsConstructor
@@ -14,6 +14,8 @@ public class ModuleDTO {
 
     private String description;
 
-    private Long formationId;
-
+    private Long formationId;   
+    
+    private List<DocumentDTO> documents;
+    private List<VideoDTO> videos;
 }

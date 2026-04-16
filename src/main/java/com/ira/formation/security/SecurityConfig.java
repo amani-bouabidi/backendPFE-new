@@ -44,17 +44,70 @@ public class SecurityConfig {
             // ✅ Configuration CORS
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
             
-            // ✅ Autorisations des endpoints
             .authorizeHttpRequests(auth -> auth
+
+            	    // ================= PUBLIC =================
             	    .requestMatchers("/api/auth/**").permitAll()
             	    .requestMatchers("/error").permitAll()
+            	    .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+
+            	    .requestMatchers("/api/domaines/public").permitAll()
+            	    .requestMatchers("/api/formations/public").permitAll()
+            	    .requestMatchers("/api/formations/domaine/**").permitAll()
+            	    .requestMatchers("/api/domaines/catalogue").permitAll()
+
+            	    // ================= ADMIN =================
             	    .requestMatchers("/api/admin/**").hasRole("ADMIN")
-            	    .requestMatchers("/api/formations/**").hasRole("ADMIN")
-            	    .requestMatchers("/api/modules/**").hasAnyRole("ADMIN","FORMATEUR","APPRENANT")
-            	    .requestMatchers("/api/tests/pass/**").hasRole("APPRENANT")
-            	    .requestMatchers("/api/tests/formation/**").hasAnyRole("APPRENANT","FORMATEUR")
+            	    .requestMatchers("/api/domaines/admin").hasRole("ADMIN")
+            	    .requestMatchers("/api/formations/admin").hasRole("ADMIN")
+            	    .requestMatchers("/api/modules/**").hasRole("ADMIN")
+
+            	    .requestMatchers("/api/attestations/generate").hasRole("ADMIN")
+            	    .requestMatchers("/api/attestations/all").hasRole("ADMIN")
+
+            	    // ================= FORMATEUR =================
+            	    .requestMatchers("/api/formations/formateur").hasRole("FORMATEUR")
             	    .requestMatchers("/api/tests/**").hasRole("FORMATEUR")
-            	    .requestMatchers("/swagger-ui/**","/v3/api-docs/**").permitAll()
+            	    .requestMatchers("/api/questions/**").hasRole("FORMATEUR")
+            	    .requestMatchers("/api/choix/**").hasRole("FORMATEUR")
+
+            	    .requestMatchers("/api/sessions/creer").hasRole("FORMATEUR")
+            	    .requestMatchers("/api/sessions/formateur").hasRole("FORMATEUR")
+            	    .requestMatchers("/api/sessions/mettre-a-jour/**").hasRole("FORMATEUR")
+            	    .requestMatchers("/api/sessions/supprimer/**").hasRole("FORMATEUR")
+            	    .requestMatchers("/api/sessions/terminer/**").hasRole("FORMATEUR")
+
+            	    // ✅ FIX IMPORTANT (HÉNA)
+            	    .requestMatchers("/api/sessions/**").hasAnyRole("FORMATEUR","APPRENANT")
+
+            	    .requestMatchers("/api/progress/formation/**").hasRole("FORMATEUR")
+
+            	    // ================= APPRENANT =================
+            	    .requestMatchers("/api/formations/apprenant").hasRole("APPRENANT")
+            	    .requestMatchers("/api/tests/pass/**").hasRole("APPRENANT")
+            	    .requestMatchers("/api/tests/formation/**").hasRole("APPRENANT")
+            	    .requestMatchers("/api/notifications/**").hasRole("APPRENANT")
+
+            	    .requestMatchers("/api/progress/my").hasRole("APPRENANT")
+            	    .requestMatchers("/api/progress/resume").hasRole("APPRENANT")
+            	    .requestMatchers("/api/progress/complete").hasRole("APPRENANT")
+
+            	    .requestMatchers("/api/attestations/my").hasRole("APPRENANT")
+
+            	    // ================= SHARED =================
+            	    .requestMatchers("/api/documents/download/**")
+            	        .hasAnyRole("ADMIN","FORMATEUR","APPRENANT")
+
+            	    .requestMatchers("/api/videos/download/**")
+            	        .hasAnyRole("ADMIN","FORMATEUR","APPRENANT")
+
+            	    .requestMatchers("/api/videos/stream/**")
+            	        .hasAnyRole("ADMIN","FORMATEUR","APPRENANT")
+
+            	    .requestMatchers("/api/favorites/**")
+            	        .hasAnyRole("ADMIN","FORMATEUR","APPRENANT")
+
+            	    // ================= FALLBACK =================
             	    .anyRequest().authenticated()
             	)
             // ✅ Session stateless pour JWT

@@ -97,7 +97,8 @@ public class VideoService {
         videoRepository.delete(video);
     }
 
-    // =================== DOWNLOAD ===================
+ // =================== DOWNLOAD ===================
+    
     public ResponseEntity<Resource> downloadVideo(Long id, String email) throws Exception {
 
         Video video = videoRepository.findById(id)
@@ -108,16 +109,35 @@ public class VideoService {
 
         String role = user.getRole().getNom();
 
-        // 🔐 check inscription (only apprenant)
-        if (role.equals("APPRENANT")) {
+        // 🔐 ADMIN → accès libre
 
-            boolean inscrit = inscriptionRepository
-                    .existsByApprenantAndFormation(user, video.getModule().getFormation());
+        if (!"ADMIN".equals(role)) {
 
-            if (!inscrit) {
-                throw new RuntimeException("Accès refusé : vous n'êtes pas inscrit");
+            // 🔐 FORMATEUR → فقط formation متاعو
+            if ("FORMATEUR".equals(role)) {
+                if (!video.getModule().getFormation().getFormateur()
+                        .getEmail().equals(email)) {
+
+                    throw new RuntimeException("Accès refusé : ce contenu ne vous appartient pas");
+                }
+            }
+
+            // 🔐 APPRENANT → لازم يكون inscrit
+            if ("APPRENANT".equals(role)) {
+
+                boolean inscrit = inscriptionRepository
+                        .existsByApprenantAndFormation(
+                                user,
+                                video.getModule().getFormation()
+                        );
+
+                if (!inscrit) {
+                    throw new RuntimeException("Accès refusé : vous n'êtes pas inscrit");
+                }
             }
         }
+
+        // ================= FILE =================
 
         File file = new File(System.getProperty("user.dir") + "/" + video.getFilePath());
 
@@ -141,7 +161,7 @@ public class VideoService {
         return ResponseEntity.ok()
                 .contentType(MediaType.parseMediaType(contentType))
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + video.getTitre() + ".mp4\"")
+                        "attachment; filename=\"" + video.getTitre() + "\"")
                 .body(resource);
     }
     // =================== HELPER ===================

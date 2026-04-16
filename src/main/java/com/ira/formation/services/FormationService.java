@@ -1,22 +1,13 @@
 package com.ira.formation.services;
 
-import com.ira.formation.dto.FormationDTO;
-import com.ira.formation.dto.FormationModulesDTO;
-import com.ira.formation.dto.ModuleDTO;
-import com.ira.formation.entities.Domaine;
-import com.ira.formation.entities.Formation;
-import com.ira.formation.entities.Utilisateur;
-import com.ira.formation.repositories.DomaineRepository;
-import com.ira.formation.repositories.FormationRepository;
-import com.ira.formation.repositories.InscriptionRepository;
-import com.ira.formation.repositories.UtilisateurRepository;
+import com.ira.formation.dto.*;
+import com.ira.formation.entities.*;
+import com.ira.formation.repositories.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
+import java.util.Collections;
 import java.util.List;
 
 @Service
@@ -26,11 +17,12 @@ public class FormationService {
     private final FormationRepository formationRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final DomaineRepository domaineRepository;
-    private final NotificationService notificationService;
     private final InscriptionRepository inscriptionRepository;
 
-    // Mapper simple entity → DTO
-    private FormationDTO mapToDTO(Formation f) {
+    // =========================================================
+    // MAPPER SIMPLE (PUBLIC / LISTING)
+    // =========================================================
+    private FormationDTO map(Formation f) {
         return FormationDTO.builder()
                 .id(f.getId())
                 .titre(f.getTitre())
@@ -42,152 +34,158 @@ public class FormationService {
                 .build();
     }
 
-    // Création
-    @Transactional
+    // =========================================================
+    // MAPPER FULL (CONTENU)
+    // =========================================================
+    private FormationFullDTO mapFull(Formation f) {
+
+        return FormationFullDTO.builder()
+                .id(f.getId())
+                .titre(f.getTitre())
+                .description(f.getDescription())
+
+                .modules(
+                        f.getModules() == null ? Collections.emptyList() :
+                                f.getModules().stream().map(m -> ModuleDTO.builder()
+                                        .id(m.getId())
+                                        .titre(m.getTitre())
+
+                                        .documents(
+                                                m.getDocuments() == null ? Collections.emptyList() :
+                                                        m.getDocuments().stream().map(d -> DocumentDTO.builder()
+                                                                .id(d.getId())
+                                                                .nom(d.getNom())
+                                                                .filePath(d.getFilePath())
+                                                                .build()
+                                                        ).toList()
+                                        )
+
+                                        .videos(
+                                                m.getVideos() == null ? Collections.emptyList() :
+                                                        m.getVideos().stream().map(v -> VideoDTO.builder()
+                                                                .id(v.getId())
+                                                                .titre(v.getTitre())
+                                                                .filePath(v.getFilePath())
+                                                                .build()
+                                                        ).toList()
+                                        )
+
+                                        .build()
+                                ).toList()
+                )
+
+                .build();
+    }
+
+    // =========================================================
+    // ADMIN
+    // =========================================================
+
     @PreAuthorize("hasRole('ADMIN')")
-    public FormationDTO creerFormation(FormationDTO dto) {
+    public FormationDTO create(FormationDTO dto) {
 
-        // 🔥 نجيبو formateur
         Utilisateur formateur = utilisateurRepository.findById(dto.getFormateurId())
-                .orElseThrow(() -> new RuntimeException("Formateur non trouvé"));
+                .orElseThrow(() -> new RuntimeException("Formateur introuvable"));
 
-        // 🔥 نتحقق duplication
-        if (formationRepository.existsByTitreAndFormateur(dto.getTitre(), formateur)) {
-            throw new RuntimeException("Ce formateur a déjà une formation avec ce titre");
-        }
-
-        // 🔥 نجيبو domaine
         Domaine domaine = domaineRepository.findById(dto.getDomaineId())
-                .orElseThrow(() -> new RuntimeException("Domaine non trouvé"));
+                .orElseThrow(() -> new RuntimeException("Domaine introuvable"));
 
-        // 🔥 نبنيو formation
-        Formation formation = Formation.builder()
+        Formation f = Formation.builder()
                 .titre(dto.getTitre())
                 .description(dto.getDescription())
                 .formateur(formateur)
                 .domaine(domaine)
                 .build();
 
-        Formation saved = formationRepository.save(formation);
-
-     // ✅ envoyer notification
-     List<Utilisateur> apprenants = utilisateurRepository.findByRoleNom("APPRENANT");
-
-     for(Utilisateur u : apprenants){
-         notificationService.createNotification(
-                 u,
-                 "Nouvelle formation disponible: " + saved.getTitre()
-         );
-     }
-
-     // ✅ IMPORTANT: خارج ال loop
-     return mapToDTO(saved);
+        return map(formationRepository.save(f));
     }
 
-    // Liste toutes les formations
     @PreAuthorize("hasRole('ADMIN')")
-    public Page<FormationDTO> getAllFormations(Pageable pageable){
-        return formationRepository.findAll(pageable)
-                .map(this::mapToDTO);
-    }
-    
-    @PreAuthorize("hasRole('ADMIN')")
-    public List<FormationDTO> getAllFormations() {
-        return formationRepository.findAll()
-                .stream()
-                .map(this::mapToDTO)
-                .toList();
-    }
+    public FormationDTO update(Long id, FormationDTO dto) {
 
-    // Liste formations d’un formateur
-    @PreAuthorize("hasRole('ADMIN') or hasRole('FORMATEUR')")
-    public List<FormationDTO> getFormationsParFormateur(Utilisateur formateur) {
-        return formationRepository.findByFormateur(formateur)
-                .stream()
-                .map(this::mapToDTO)
-                .toList();
-    }
-
-    // Modifier formation
-    @Transactional
-    @PreAuthorize("hasRole('ADMIN')")
-    public FormationDTO modifierFormation(Long id, FormationDTO dto) {
-
-        Formation existing = formationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Formation non trouvée"));
+        Formation f = formationRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Formation introuvable"));
 
         Utilisateur formateur = utilisateurRepository.findById(dto.getFormateurId())
-                .orElseThrow(() -> new RuntimeException("Formateur non trouvé"));
-
-        // 🔥 Vérification duplication sauf si id courant
-        boolean duplicate = formationRepository.findByFormateur(formateur).stream()
-                .anyMatch(f -> f.getTitre().equalsIgnoreCase(dto.getTitre()) && !f.getId().equals(id));
-
-        if (duplicate) {
-            throw new RuntimeException("Ce formateur a déjà une formation avec ce titre");
-        }
+                .orElseThrow(() -> new RuntimeException("Formateur introuvable"));
 
         Domaine domaine = domaineRepository.findById(dto.getDomaineId())
-                .orElseThrow(() -> new RuntimeException("Domaine non trouvé"));
+                .orElseThrow(() -> new RuntimeException("Domaine introuvable"));
 
-        existing.setTitre(dto.getTitre());
-        existing.setDescription(dto.getDescription());
-        existing.setFormateur(formateur);
-        existing.setDomaine(domaine);
+        f.setTitre(dto.getTitre());
+        f.setDescription(dto.getDescription());
+        f.setFormateur(formateur);
+        f.setDomaine(domaine);
 
-        return mapToDTO(formationRepository.save(existing));
+        return map(formationRepository.save(f));
     }
 
-    // Supprimer formation
-    @Transactional
     @PreAuthorize("hasRole('ADMIN')")
-    public void supprimerFormation(Long id) {
-        Formation formation = formationRepository.findById(id)
-                .orElseThrow(() -> new RuntimeException("Formation non trouvée"));
-        formationRepository.delete(formation);
+    public void delete(Long id) {
+        formationRepository.deleteById(id);
     }
 
-    public FormationModulesDTO getFormationWithModules(Long formationId, String email) {
-
-        Utilisateur apprenant = utilisateurRepository.findByEmail(email)
-                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
-
-        Formation formation = formationRepository.findById(formationId)
-                .orElseThrow(() -> new RuntimeException("Formation non trouvée"));
-
-        // 🔐 check inscription
-        boolean inscrit = inscriptionRepository
-                .existsByApprenantAndFormation(apprenant, formation);
-
-        if(!inscrit){
-            throw new RuntimeException("Accès refusé à cette formation");
-        }
-
-        List<ModuleDTO> modules = formation.getModules()
-                .stream()
-                .map(module -> ModuleDTO.builder()
-                        .id(module.getId())
-                        .titre(module.getTitre())
-                        .description(module.getDescription())
-                        .formationId(formationId)
-                        .build())
-                .toList();
-
-        return FormationModulesDTO.builder()
-                .formationId(formationId)
-                .titreFormation(formation.getTitre())
-                .modules(modules)
-                .build();
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<FormationDTO> getAllAdmin() {
+        return formationRepository.findAll().stream().map(this::map).toList();
     }
 
-    public List<FormationDTO> getFormationsByDomaine(Long domaineId){
+    // =========================================================
+    // PUBLIC (VISITOR)
+    // =========================================================
+    public List<FormationDTO> getPublic() {
+        return formationRepository.findAll().stream().map(this::map).toList();
+    }
 
-        Domaine domaine = domaineRepository.findById(domaineId)
-                .orElseThrow(() -> new RuntimeException("Domaine non trouvé"));
+    // =========================================================
+    // FORMATEUR (HIS OWN FULL CONTENT)
+    // =========================================================
+    @PreAuthorize("hasRole('FORMATEUR')")
+    public List<FormationFullDTO> getMyFormations(String email) {
 
-        return formationRepository.findByDomaine(domaine)
+        Utilisateur f = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Formateur introuvable"));
+
+        return formationRepository.findByFormateur(f)
                 .stream()
-                .map(this::mapToDTO)
+                .map(this::mapFull)
                 .toList();
+    }
+
+    // =========================================================
+    // APPRENANT (ONLY INSCRIBED FULL CONTENT)
+    // =========================================================
+    @PreAuthorize("hasRole('APPRENANT')")
+    public List<FormationFullDTO> getMyInscribedFormations(String email) {
+
+        Utilisateur a = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Apprenant introuvable"));
+
+        return inscriptionRepository.findByApprenant(a)
+                .stream()
+                .map(insc -> mapFull(insc.getFormation()))
+                .toList();
+    }
+
+    // =========================================================
+    // BY DOMAINE (PUBLIC)
+    // =========================================================
+    public List<FormationDTO> getByDomaine(Long domaineId) {
+
+        Domaine d = domaineRepository.findById(domaineId)
+                .orElseThrow(() -> new RuntimeException("Domaine introuvable"));
+
+        return formationRepository.findByDomaine(d)
+                .stream()
+                .map(this::map)
+                .toList();
+    }
+
+    // =========================================================
+    // SECURITY HELP
+    // =========================================================
+    public Formation getFormationOrThrow(Long id) {
+        return formationRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Formation introuvable"));
     }
 }

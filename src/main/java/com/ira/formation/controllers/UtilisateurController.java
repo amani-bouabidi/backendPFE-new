@@ -6,7 +6,6 @@ import com.ira.formation.dto.UtilisateurUpdateDTO;
 import com.ira.formation.services.UtilisateurService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -14,49 +13,52 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/admin")  
+@RequestMapping("/api/admin")
 @CrossOrigin(origins = "http://localhost:4200")
 @RequiredArgsConstructor
 public class UtilisateurController {
 
     private final UtilisateurService utilisateurService;
 
-    // =====================================================================
-    //                  Création de formateur (admin only)
-    // =====================================================================
+    // =====================================================
+    // CREATE FORMATEUR
+    // =====================================================
     @PostMapping("/formateurs")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UtilisateurResponseDTO> creerFormateur(
             @Valid @RequestBody UtilisateurCreationDTO dto) {
-        return ResponseEntity.status(201).body(utilisateurService.creerFormateur(dto));
+
+        return ResponseEntity.status(201)
+                .body(utilisateurService.creerFormateur(dto));
     }
 
-    // =====================================================================
-    //                  Mise à jour formateur (admin only)
-    // =====================================================================
+    // =====================================================
+    // UPDATE FORMATEUR
+    // =====================================================
     @PutMapping("/formateurs/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<UtilisateurResponseDTO> modifierFormateur(
             @PathVariable Long id,
             @Valid @RequestBody UtilisateurUpdateDTO dto) {
 
-        UtilisateurResponseDTO updated = utilisateurService.modifierFormateur(id, dto);
-        return ResponseEntity.ok(updated);
+        return ResponseEntity.ok(
+                utilisateurService.modifierFormateur(id, dto)
+        );
     }
 
-    // =====================================================================
-    //                  Suppression formateur (admin only)
-    // =====================================================================
+    // =====================================================
+    // DELETE FORMATEUR
+    // =====================================================
     @DeleteMapping("/formateurs/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> supprimerFormateur(@PathVariable Long id) {
         utilisateurService.supprimerFormateur(id);
-        return ResponseEntity.noContent().build();  // 204 No Content
+        return ResponseEntity.noContent().build();
     }
 
-    // =====================================================================
-    //                  Suppression apprenant (admin only)
-    // =====================================================================
+    // =====================================================
+    // DELETE APPRENANT
+    // =====================================================
     @DeleteMapping("/apprenants/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<Void> supprimerApprenant(@PathVariable Long id) {
@@ -64,15 +66,18 @@ public class UtilisateurController {
         return ResponseEntity.noContent().build();
     }
 
-    // =====================================================================
-    //                  Lister (optionnel pour debug/admin dashboard)
-    // =====================================================================
+    // =====================================================
+    // LIST FORMATEURS
+    // =====================================================
     @GetMapping("/formateurs")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UtilisateurResponseDTO>> listerFormateurs() {
         return ResponseEntity.ok(utilisateurService.getAllFormateurs());
     }
 
+    // =====================================================
+    // LIST APPRENANTS
+    // =====================================================
     @GetMapping("/apprenants")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<UtilisateurResponseDTO>> listerApprenants() {

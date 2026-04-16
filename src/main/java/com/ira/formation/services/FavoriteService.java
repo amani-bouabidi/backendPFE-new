@@ -2,7 +2,7 @@ package com.ira.formation.services;
 
 import com.ira.formation.dto.DocumentDTO;
 import com.ira.formation.dto.FavoriteResponseDTO;
-import com.ira.formation.dto.ModuleContentDTO;
+import com.ira.formation.dto.ModuleDTO;
 import com.ira.formation.dto.VideoDTO;
 import com.ira.formation.entities.*;
 import com.ira.formation.entities.Module;
@@ -101,11 +101,13 @@ public class FavoriteService {
                             ))
                             .toList();
 
-                    content = new ModuleContentDTO(
-                            m.getTitre(),
-                            documents,
-                            videos
-                    );
+                    content = ModuleDTO.builder()
+                            .id(m.getId())
+                            .titre(m.getTitre())
+                            .description(m.getDescription())
+                            .documents(documents)
+                            .videos(videos)
+                            .build();
                 }
             }
 

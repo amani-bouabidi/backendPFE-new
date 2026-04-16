@@ -1,10 +1,10 @@
 package com.ira.formation.controllers;
 
 import com.ira.formation.dto.DomaineDTO;
-import com.ira.formation.dto.DomaineFormationsDTO;
-import com.ira.formation.dto.DomaineStatsDTO;
+import com.ira.formation.dto.DomainePublicDTO;
 import com.ira.formation.services.DomaineService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -17,33 +17,41 @@ public class DomaineController {
 
     private final DomaineService domaineService;
 
-    // ✅ CREATE
+    // =================== ADMIN CRUD ===================
     @PostMapping
-    public DomaineDTO createDomaine(@RequestBody DomaineDTO dto){
-        return domaineService.createDomaine(dto);
+    @PreAuthorize("hasRole('ADMIN')")
+    public DomaineDTO create(@RequestBody DomaineDTO dto) {
+        return domaineService.create(dto);
     }
 
-    // ✅ GET ALL (clean)
-    @GetMapping
-    public List<DomaineDTO> getAllDomaines(){
-        return domaineService.getAllDomaines();
+    @GetMapping("/admin")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<DomaineDTO> getAll() {
+        return domaineService.getAll();
+    }
+    
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public DomaineDTO update(@PathVariable Long id,
+                             @RequestBody DomaineDTO dto) {
+        return domaineService.update(id, dto);
     }
 
-    // ✅ DELETE
     @DeleteMapping("/{id}")
-    public void deleteDomaine(@PathVariable Long id){
-        domaineService.deleteDomaine(id);
+    @PreAuthorize("hasRole('ADMIN')")
+    public void delete(@PathVariable Long id) {
+        domaineService.delete(id);
     }
 
-    // ✅ DOMAINES + FORMATIONS
-    @GetMapping("/with-formations")
-    public List<DomaineFormationsDTO> getDomainesWithFormations(){
-        return domaineService.getDomainesWithFormations();
+    // =================== PUBLIC HOME ===================
+    @GetMapping("/public")
+    public List<DomaineDTO> getPublic() {
+        return domaineService.getPublic();
     }
-
-    // ✅ STATS
-    @GetMapping("/stats")
-    public List<DomaineStatsDTO> getDomainesStats(){
-        return domaineService.getDomainesStats();
+    
+    
+    @GetMapping("/catalogue")
+    public List<DomainePublicDTO> getCatalogue() {
+        return domaineService.getCatalogue();
     }
 }

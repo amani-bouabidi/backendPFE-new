@@ -2,18 +2,15 @@ package com.ira.formation.dto;
 
 import lombok.*;
 
-@Getter
-@Setter
+@Data
+@Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
 public class DocumentDTO {
 
     private Long id;
-
     private String nom;
-
     private String filePath;
 
-    private Long moduleId;
+    private Long moduleId; 
 }
