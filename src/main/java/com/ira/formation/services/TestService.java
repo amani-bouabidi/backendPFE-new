@@ -36,15 +36,16 @@ public class TestService {
     private final UtilisateurRepository utilisateurRepository;
 
     // =================== CREATE ===================
-    public TestResponseDTO createTest(Long formationId, String titre, String email){
+    public TestResponseDTO createTest(Long formationId, String titre, String email) {
+
         Formation formation = formationRepository.findById(formationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Formation non trouvée"));
 
-        if(!formation.getFormateur().getEmail().equals(email)){
+        if (!formation.getFormateur().getEmail().equals(email)) {
             throw new UnauthorizedException("Accès refusé");
         }
 
-        if(testRepository.existsByFormationId(formationId)){
+        if (testRepository.existsByFormationId(formationId)) {
             throw new RuntimeException("Un test existe déjà pour cette formation");
         }
 
@@ -53,13 +54,11 @@ public class TestService {
                 .formation(formation)
                 .build();
 
-        Test saved = testRepository.save(test);
-
-        return mapToDTO(saved); // formateur voit tout
+        return mapToDTO(testRepository.save(test));
     }
 
- // =================== GET BY FORMATION (FORMATEUR) ===================
-    public TestResponseDTO getTestByFormation(Long formationId, String email){
+    // =================== GET BY FORMATION (FORMATEUR) ===================
+    public TestResponseDTO getTestByFormation(Long formationId, String email) {
 
         Test test = testRepository.findByFormationId(formationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Test non trouvé"));
@@ -67,56 +66,68 @@ public class TestService {
         Utilisateur user = utilisateurRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        // ❌ sécurité
-        if(!"FORMATEUR".equals(user.getRole().getNom())){
+        if (!"FORMATEUR".equals(user.getRole().getNom())) {
             throw new UnauthorizedException("Accès réservé au formateur");
         }
 
-        // ❌ vérifier propriétaire
-        if(!test.getFormation().getFormateur().getEmail().equals(email)){
+        if (!test.getFormation().getFormateur().getEmail().equals(email)) {
             throw new UnauthorizedException("Accès refusé");
         }
 
-        return mapToDTO(test); // ✅ فقط formateur
+        return mapToDTO(test);
     }
 
- // =================== GET BY FORMATION (APPRENANT) ===================
-    public TestApprenantDTO getTestByFormationForApprenant(Long formationId, String email){
-
-        Test test = testRepository.findByFormationId(formationId)
-                .orElseThrow(() -> new ResourceNotFoundException("Test non trouvé"));
+    // =================== GET BY FORMATION (APPRENANT) ===================
+    // FIX N°1: If apprenant is already validly inscribed → return 409 (already enrolled)
+    // so the frontend knows to show the content directly without asking to retake the test
+    public TestApprenantDTO getTestByFormationForApprenant(Long formationId, String email) {
 
         Utilisateur user = utilisateurRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        // ❌ sécurité
-        if(!"APPRENANT".equals(user.getRole().getNom())){
+        if (!"APPRENANT".equals(user.getRole().getNom())) {
             throw new UnauthorizedException("Seul un apprenant peut accéder à ce test");
         }
 
-        return mapToDTOForApprenant(test); // ✅ هنا صحيح
+        Formation formation = formationRepository.findById(formationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Formation non trouvée"));
+
+        // FIX: If apprenant already passed the test and is validly inscribed,
+        // throw a specific exception so the frontend redirects to content directly
+        boolean alreadyInscribed = inscriptionRepository
+                .existsByApprenantAndFormationAndValide(user, formation, true);
+
+        if (alreadyInscribed) {
+            throw new RuntimeException("ALREADY_INSCRIBED");
+        }
+
+        Test test = testRepository.findByFormationId(formationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Test non trouvé pour cette formation"));
+
+        return mapToDTOForApprenant(test);
     }
+
     // =================== UPDATE ===================
-    public TestResponseDTO updateTest(Long testId, String titre, String email){
+    public TestResponseDTO updateTest(Long testId, String titre, String email) {
+
         Test test = testRepository.findById(testId)
                 .orElseThrow(() -> new ResourceNotFoundException("Test non trouvé"));
 
-        if(!test.getFormation().getFormateur().getEmail().equals(email)){
+        if (!test.getFormation().getFormateur().getEmail().equals(email)) {
             throw new UnauthorizedException("Accès refusé");
         }
 
         test.setTitre(titre);
-        Test updated = testRepository.save(test);
-
-        return mapToDTO(updated);
+        return mapToDTO(testRepository.save(test));
     }
 
     // =================== DELETE ===================
-    public void deleteTest(Long testId, String email){
+    public void deleteTest(Long testId, String email) {
+
         Test test = testRepository.findById(testId)
                 .orElseThrow(() -> new ResourceNotFoundException("Test non trouvé"));
 
-        if(!test.getFormation().getFormateur().getEmail().equals(email)){
+        if (!test.getFormation().getFormateur().getEmail().equals(email)) {
             throw new UnauthorizedException("Accès refusé");
         }
 
@@ -124,11 +135,12 @@ public class TestService {
     }
 
     // =================== PASSER TEST ===================
-    public Map<String, Object> passerTest(Long formationId, Map<Long, Long> reponses, String email){
+    public Map<String, Object> passerTest(Long formationId, Map<Long, Long> reponses, String email) {
+
         Utilisateur apprenant = utilisateurRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        if(!"APPRENANT".equals(apprenant.getRole().getNom())){
+        if (!"APPRENANT".equals(apprenant.getRole().getNom())) {
             throw new UnauthorizedException("Seul un apprenant peut passer le test");
         }
 
@@ -138,7 +150,7 @@ public class TestService {
         Formation formation = test.getFormation();
 
         int total = test.getQuestions().size();
-        if(total == 0){
+        if (total == 0) {
             throw new RuntimeException("Le test n'a pas encore de questions. Contactez le formateur.");
         }
 
@@ -152,7 +164,7 @@ public class TestService {
                         .valide(false)
                         .build());
 
-        if(inscription.isValide()){
+        if (inscription.isValide()) {
             throw new RuntimeException("Vous avez déjà réussi ce test et êtes inscrit.");
         }
 
@@ -160,9 +172,9 @@ public class TestService {
         int correct = 0;
         for (Question q : test.getQuestions()) {
             Long choixId = reponses.get(q.getId());
-            if(choixId == null) continue;
-            for (Choix c : q.getChoix()){
-                if(c.getId().equals(choixId) && c.isCorrect()){
+            if (choixId == null) continue;
+            for (Choix c : q.getChoix()) {
+                if (c.getId().equals(choixId) && c.isCorrect()) {
                     correct++;
                 }
             }
@@ -177,21 +189,21 @@ public class TestService {
         inscription.setDateDernierTest(LocalDateTime.now());
         inscriptionRepository.save(inscription);
 
-        Map<String,Object> result = new HashMap<>();
+        Map<String, Object> result = new HashMap<>();
         result.put("score", score);
         result.put("totalQuestions", total);
         result.put("correctAnswers", correct);
         result.put("success", success);
         result.put("tentatives", inscription.getTentativesTest());
-        result.put("message", success ?
-                "Félicitations ! Vous avez réussi le test et vous êtes inscrit à la formation." :
-                "Vous n'avez pas réussi le test. Vous pouvez retenter plus tard.");
+        result.put("message", success
+                ? "Félicitations ! Vous avez réussi le test et êtes inscrit à la formation."
+                : "Vous n'avez pas réussi le test. Vous pouvez retenter plus tard.");
 
         return result;
     }
 
     // =================== MAPPERS ===================
-    private TestResponseDTO mapToDTO(Test test){
+    private TestResponseDTO mapToDTO(Test test) {
         return TestResponseDTO.builder()
                 .id(test.getId())
                 .titre(test.getTitre())
@@ -215,7 +227,7 @@ public class TestService {
                 .build();
     }
 
-    private TestApprenantDTO mapToDTOForApprenant(Test test){
+    private TestApprenantDTO mapToDTOForApprenant(Test test) {
         return TestApprenantDTO.builder()
                 .id(test.getId())
                 .titre(test.getTitre())

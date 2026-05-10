@@ -23,17 +23,26 @@ public class RefreshTokenService {
 
     @Transactional
     public RefreshToken createRefreshToken(Utilisateur utilisateur) {
-        // ✅ ÉTAPE 1 : Supprimer l'ancien token s'il existe (pour éviter duplicate key)
-        refreshTokenRepository.deleteByUtilisateurId(utilisateur.getId());
-        
-        // ✅ ÉTAPE 2 : Créer un nouveau token
+
+        Optional<RefreshToken> existing =
+            refreshTokenRepository.findByUtilisateurId(utilisateur.getId());
+
+        if (existing.isPresent()) {
+            RefreshToken token = existing.get();
+            token.setToken(UUID.randomUUID().toString());
+            token.setCreatedAt(Instant.now());
+            token.setExpiresAt(Instant.now().plusSeconds(REFRESH_TOKEN_DURATION));
+            token.setRevoked(false);
+            return refreshTokenRepository.save(token);
+        }
+
         RefreshToken token = new RefreshToken();
         token.setToken(UUID.randomUUID().toString());
         token.setUtilisateur(utilisateur);
         token.setCreatedAt(Instant.now());
         token.setExpiresAt(Instant.now().plusSeconds(REFRESH_TOKEN_DURATION));
         token.setRevoked(false);
-        
+
         return refreshTokenRepository.save(token);
     }
 

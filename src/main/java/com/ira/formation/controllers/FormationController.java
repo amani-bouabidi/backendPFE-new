@@ -39,7 +39,7 @@ public class FormationController {
         formationService.delete(id);
     }
 
-    // =================== ADMIN VIEW ===================
+    // =================== ADMIN VIEW (simple - pour la table) ===================
 
     @GetMapping("/admin")
     @PreAuthorize("hasRole('ADMIN')")
@@ -47,14 +47,22 @@ public class FormationController {
         return formationService.getAllAdmin();
     }
 
-    // =================== PUBLIC VISITOR ===================
+    // =================== ADMIN VIEW FULL (BUG FIX N°2: avec modules + docs + vidéos) ===================
+
+    @GetMapping("/admin/full")
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<FormationFullDTO> getAllFull() {
+        return formationService.getAllAdminFull();
+    }
+
+    // =================== PUBLIC VISITEUR ===================
 
     @GetMapping("/public")
     public List<FormationDTO> getPublic() {
         return formationService.getPublic();
     }
 
-    // =================== FORMATEUR (FULL CONTENT) ===================
+    // =================== FORMATEUR (CONTENU COMPLET) ===================
 
     @GetMapping("/formateur")
     @PreAuthorize("hasRole('FORMATEUR')")
@@ -62,7 +70,7 @@ public class FormationController {
         return formationService.getMyFormations(principal.getName());
     }
 
-    // =================== APPRENANT (FULL CONTENT IF INSCRIT) ===================
+    // =================== APPRENANT (CONTENU COMPLET SI INSCRIT) ===================
 
     @GetMapping("/apprenant")
     @PreAuthorize("hasRole('APPRENANT')")
@@ -70,7 +78,7 @@ public class FormationController {
         return formationService.getMyInscribedFormations(principal.getName());
     }
 
-    // =================== FILTER BY DOMAINE ===================
+    // =================== FILTRE PAR DOMAINE ===================
 
     @GetMapping("/domaine/{id}")
     public List<FormationDTO> getByDomaine(@PathVariable Long id) {

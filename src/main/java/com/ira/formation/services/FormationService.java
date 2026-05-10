@@ -6,6 +6,7 @@ import com.ira.formation.repositories.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
@@ -18,6 +19,9 @@ public class FormationService {
     private final UtilisateurRepository utilisateurRepository;
     private final DomaineRepository domaineRepository;
     private final InscriptionRepository inscriptionRepository;
+    private final NotificationService notificationService;
+    private final TestRepository testRepository;
+    private final SessionEnLigneRepository sessionRepository;
 
     // =========================================================
     // MAPPER SIMPLE (PUBLIC / LISTING)
@@ -35,52 +39,51 @@ public class FormationService {
     }
 
     // =========================================================
-    // MAPPER FULL (CONTENU)
+    // MAPPER FULL (CONTENU COMPLET: modules + documents + videos)
+    // FIX N°2: includes formateurId, formateurNom, domaineId, domaineNom
     // =========================================================
     private FormationFullDTO mapFull(Formation f) {
-
         return FormationFullDTO.builder()
                 .id(f.getId())
                 .titre(f.getTitre())
                 .description(f.getDescription())
-
+                .formateurId(f.getFormateur() != null ? f.getFormateur().getId() : null)
+                .formateurNom(f.getFormateur() != null ? f.getFormateur().getNom() + " " + f.getFormateur().getPrenom() : null)
+                .domaineId(f.getDomaine() != null ? f.getDomaine().getId() : null)
+                .domaineNom(f.getDomaine() != null ? f.getDomaine().getNom() : null)
                 .modules(
-                        f.getModules() == null ? Collections.emptyList() :
-                                f.getModules().stream().map(m -> ModuleDTO.builder()
-                                        .id(m.getId())
-                                        .titre(m.getTitre())
-
-                                        .documents(
-                                                m.getDocuments() == null ? Collections.emptyList() :
-                                                        m.getDocuments().stream().map(d -> DocumentDTO.builder()
-                                                                .id(d.getId())
-                                                                .nom(d.getNom())
-                                                                .filePath(d.getFilePath())
-                                                                .build()
-                                                        ).toList()
-                                        )
-
-                                        .videos(
-                                                m.getVideos() == null ? Collections.emptyList() :
-                                                        m.getVideos().stream().map(v -> VideoDTO.builder()
-                                                                .id(v.getId())
-                                                                .titre(v.getTitre())
-                                                                .filePath(v.getFilePath())
-                                                                .build()
-                                                        ).toList()
-                                        )
-
+                    f.getModules() == null ? Collections.emptyList() :
+                        f.getModules().stream().map(m -> ModuleDTO.builder()
+                            .id(m.getId())
+                            .titre(m.getTitre())
+                            .description(m.getDescription())
+                            .documents(
+                                m.getDocuments() == null ? Collections.emptyList() :
+                                    m.getDocuments().stream().map(d -> DocumentDTO.builder()
+                                        .id(d.getId())
+                                        .nom(d.getNom())
+                                        .filePath(d.getFilePath())
                                         .build()
-                                ).toList()
+                                    ).toList()
+                            )
+                            .videos(
+                                m.getVideos() == null ? Collections.emptyList() :
+                                    m.getVideos().stream().map(v -> VideoDTO.builder()
+                                        .id(v.getId())
+                                        .titre(v.getTitre())
+                                        .filePath(v.getFilePath())
+                                        .build()
+                                    ).toList()
+                            )
+                            .build()
+                        ).toList()
                 )
-
                 .build();
     }
 
     // =========================================================
-    // ADMIN
+    // ADMIN - CREATE (BUG FIX N°5: notify ALL apprenants)
     // =========================================================
-
     @PreAuthorize("hasRole('ADMIN')")
     public FormationDTO create(FormationDTO dto) {
 
@@ -97,9 +100,23 @@ public class FormationService {
                 .domaine(domaine)
                 .build();
 
-        return map(formationRepository.save(f));
+        Formation saved = formationRepository.save(f);
+
+        // BUG FIX N°5: Notify ALL apprenants about the new formation
+        List<Utilisateur> allApprenants = utilisateurRepository.findByRoleNom("APPRENANT");
+        allApprenants.forEach(apprenant ->
+            notificationService.createNotification(
+                apprenant,
+                "Nouvelle formation disponible : « " + saved.getTitre() + " »"
+            )
+        );
+
+        return map(saved);
     }
 
+    // =========================================================
+    // ADMIN - UPDATE
+    // =========================================================
     @PreAuthorize("hasRole('ADMIN')")
     public FormationDTO update(Long id, FormationDTO dto) {
 
@@ -120,25 +137,62 @@ public class FormationService {
         return map(formationRepository.save(f));
     }
 
+    // =========================================================
+    // ADMIN - DELETE
+    // Relations:
+    //   Formation → Module   = AGGRÉGATION : modules restent en base
+    //   Formation → Test     = COMPOSITION : test supprimé automatiquement
+    //   Formation → Session  = COMPOSITION : sessions supprimées automatiquement
+    // =========================================================
     @PreAuthorize("hasRole('ADMIN')")
+    @Transactional
     public void delete(Long id) {
-        formationRepository.deleteById(id);
+
+        Formation formation = formationRepository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Formation introuvable"));
+
+        // COMPOSITION: Supprimer le test lié (si existe)
+        testRepository.findByFormationId(id).ifPresent(testRepository::delete);
+
+        // COMPOSITION: Supprimer toutes les sessions liées
+        List<SessionEnLigne> sessions = sessionRepository.findByFormation(formation);
+        sessionRepository.deleteAll(sessions);
+
+        // AGGRÉGATION: Détacher les modules (nullifier la référence formation)
+        // pour qu'ils restent en base sans référence à la formation supprimée
+        if (formation.getModules() != null) {
+            formation.getModules().forEach(m -> m.setFormation(null));
+        }
+
+        // Supprimer la formation
+        formationRepository.delete(formation);
     }
 
+    // =========================================================
+    // ADMIN - GET ALL (simple, pour la table)
+    // =========================================================
     @PreAuthorize("hasRole('ADMIN')")
     public List<FormationDTO> getAllAdmin() {
         return formationRepository.findAll().stream().map(this::map).toList();
     }
 
     // =========================================================
-    // PUBLIC (VISITOR)
+    // ADMIN - GET ALL FULL (BUG FIX N°2: avec modules + docs + vidéos)
+    // =========================================================
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<FormationFullDTO> getAllAdminFull() {
+        return formationRepository.findAll().stream().map(this::mapFull).toList();
+    }
+
+    // =========================================================
+    // PUBLIC (VISITEUR)
     // =========================================================
     public List<FormationDTO> getPublic() {
         return formationRepository.findAll().stream().map(this::map).toList();
     }
 
     // =========================================================
-    // FORMATEUR (HIS OWN FULL CONTENT)
+    // FORMATEUR (SES PROPRES FORMATIONS AVEC CONTENU COMPLET)
     // =========================================================
     @PreAuthorize("hasRole('FORMATEUR')")
     public List<FormationFullDTO> getMyFormations(String email) {
@@ -153,7 +207,7 @@ public class FormationService {
     }
 
     // =========================================================
-    // APPRENANT (ONLY INSCRIBED FULL CONTENT)
+    // APPRENANT (UNIQUEMENT SES FORMATIONS INSCRITES AVEC CONTENU)
     // =========================================================
     @PreAuthorize("hasRole('APPRENANT')")
     public List<FormationFullDTO> getMyInscribedFormations(String email) {
@@ -163,12 +217,13 @@ public class FormationService {
 
         return inscriptionRepository.findByApprenant(a)
                 .stream()
+                .filter(insc -> insc.isValide()) // FIX BUG #3
                 .map(insc -> mapFull(insc.getFormation()))
                 .toList();
     }
 
     // =========================================================
-    // BY DOMAINE (PUBLIC)
+    // PAR DOMAINE (PUBLIC)
     // =========================================================
     public List<FormationDTO> getByDomaine(Long domaineId) {
 
@@ -182,7 +237,7 @@ public class FormationService {
     }
 
     // =========================================================
-    // SECURITY HELP
+    // UTILITAIRE
     // =========================================================
     public Formation getFormationOrThrow(Long id) {
         return formationRepository.findById(id)

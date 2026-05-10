@@ -13,11 +13,12 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/sessions")
 @RequiredArgsConstructor
+@CrossOrigin(origins = "http://localhost:4200")
 public class SessionEnLigneController {
 
     private final SessionEnLigneService sessionService;
 
-    // =================== CREATE ===================
+    // =================== CREATE (FORMATEUR) ===================
     @PostMapping("/creer")
     @PreAuthorize("hasRole('FORMATEUR')")
     public ApiResponse<SessionEnLigneDTO> creerSession(
@@ -42,7 +43,31 @@ public class SessionEnLigneController {
         );
     }
 
-    // =================== GET SECURE ===================
+    // =================== BUG FIX N°3: APPRENANT - toutes ses sessions ===================
+    @GetMapping("/apprenant")
+    @PreAuthorize("hasRole('APPRENANT')")
+    public ApiResponse<List<SessionEnLigneDTO>> getAllSessionsForApprenant(Principal principal) {
+
+        return ApiResponse.success(
+                sessionService.getAllSessionsForApprenant(principal.getName()),
+                "Sessions de l'apprenant"
+        );
+    }
+
+    // =================== BUG FIX N°3: APPRENANT - sessions d'une formation spécifique ===================
+    @GetMapping("/apprenant/formation/{formationId}")
+    @PreAuthorize("hasRole('APPRENANT')")
+    public ApiResponse<List<SessionEnLigneDTO>> getSessionsByFormationForApprenant(
+            @PathVariable Long formationId,
+            Principal principal) {
+
+        return ApiResponse.success(
+                sessionService.getSessionsByFormationForApprenant(formationId, principal.getName()),
+                "Sessions de la formation"
+        );
+    }
+
+    // =================== GET SECURE (FORMATEUR ou APPRENANT) ===================
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('FORMATEUR','APPRENANT')")
     public ApiResponse<SessionEnLigneDTO> getSessionById(
@@ -55,7 +80,7 @@ public class SessionEnLigneController {
         );
     }
 
-    // =================== UPDATE ===================
+    // =================== UPDATE (FORMATEUR) ===================
     @PutMapping("/mettre-a-jour/{id}")
     @PreAuthorize("hasRole('FORMATEUR')")
     public ApiResponse<SessionEnLigneDTO> mettreAJourTitre(
@@ -69,7 +94,7 @@ public class SessionEnLigneController {
         );
     }
 
-    // =================== DELETE ===================
+    // =================== DELETE (FORMATEUR) ===================
     @DeleteMapping("/supprimer/{id}")
     @PreAuthorize("hasRole('FORMATEUR')")
     public ApiResponse<Void> supprimerSession(
@@ -77,11 +102,10 @@ public class SessionEnLigneController {
             Principal principal) {
 
         sessionService.supprimerSession(id, principal.getName());
-
         return ApiResponse.success(null, "Session supprimée avec succès");
     }
 
-    // =================== TERMINER ===================
+    // =================== TERMINER (FORMATEUR) ===================
     @PutMapping("/terminer/{id}")
     @PreAuthorize("hasRole('FORMATEUR')")
     public ApiResponse<SessionEnLigneDTO> terminerSession(

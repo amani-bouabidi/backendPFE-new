@@ -16,9 +16,11 @@ public class SessionEnLigneService {
     private final FormationRepository formationRepository;
     private final UtilisateurRepository utilisateurRepository;
     private final InscriptionRepository inscriptionRepository;
+    // FIX BUG #2 — injection du service de notification
+    private final NotificationService notificationService;
 
     // =================== CREATE ===================
-    public SessionEnLigneDTO creerSession(Long formationId, String titre, String emailFormateur){
+    public SessionEnLigneDTO creerSession(Long formationId, String titre, String emailFormateur) {
 
         Formation formation = formationRepository.findById(formationId)
                 .orElseThrow(() -> new RuntimeException("Formation inexistante"));
@@ -32,26 +34,86 @@ public class SessionEnLigneService {
         session.setFormateurEmail(emailFormateur);
         session.setFormation(formation);
         session.setStatut(SessionStatus.EN_COURS);
-
         session.setLienReunion(
-                "https://meet.jit.si/" +
-                titre.replaceAll(" ", "") +
-                "-" +
-                System.currentTimeMillis()
+            "https://meet.jit.si/" +
+            titre.replaceAll(" ", "") +
+            "-" +
+            System.currentTimeMillis()
         );
 
-        return mapToDTO(sessionRepository.save(session));
+        SessionEnLigne saved = sessionRepository.save(session);
+
+        // FIX BUG #2 — Notifier tous les apprenants inscrits à cette formation
+        inscriptionRepository.findAll().stream()
+            .filter(insc -> insc.getFormation().getId().equals(formationId) && insc.isValide())
+            .forEach(insc -> {
+                    String message = String.format(
+                        "📡 Nouvelle session en ligne : \"%s\" pour la formation \"%s\". Lien : %s",
+                        titre,
+                        formation.getTitre(),
+                        saved.getLienReunion()
+                    );
+                    notificationService.createNotification(insc.getApprenant(), message);
+                });
+
+        return mapToDTO(saved);
     }
 
     // =================== FORMATEUR LIST ===================
     public List<SessionEnLigneDTO> listerSessionsParFormateur(String emailFormateur) {
-        return sessionRepository.findByFormateurEmail(emailFormateur)
+
+        Utilisateur formateur = utilisateurRepository.findByEmail(emailFormateur)
+                .orElseThrow(() -> new RuntimeException("Formateur non trouvé"));
+
+        // Récupérer toutes les formations du formateur, puis toutes leurs sessions
+        // (plus fiable que findByFormateurEmail qui peut être null pour les anciennes sessions)
+        List<Formation> formations = formationRepository.findByFormateur(formateur);
+
+        return formations.stream()
+                .flatMap(f -> sessionRepository.findByFormation(f).stream())
+                .map(this::mapToDTO)
+                .distinct()
+                .toList();
+    }
+
+    // =================== APPRENANT - sessions de ses formations inscrites ===================
+    public List<SessionEnLigneDTO> getSessionsByFormationForApprenant(Long formationId, String email) {
+
+        Formation formation = formationRepository.findById(formationId)
+                .orElseThrow(() -> new RuntimeException("Formation introuvable"));
+
+        Utilisateur apprenant = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+        if (!inscriptionRepository.existsByApprenantAndFormation(apprenant, formation)) {
+            throw new RuntimeException("Accès refusé : vous n'êtes pas inscrit à cette formation");
+        }
+
+        return sessionRepository.findByFormation(formation)
                 .stream()
                 .map(this::mapToDTO)
                 .toList();
     }
 
-    // =================== GET SECURE ===================
+    // =================== APPRENANT - toutes les sessions de toutes ses formations ===================
+    public List<SessionEnLigneDTO> getAllSessionsForApprenant(String email) {
+
+        Utilisateur apprenant = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
+
+        // On prend TOUTES les inscriptions (valides ou non) pour ne rien rater
+        // Un apprenant inscrit même sans validation doit voir les sessions
+        return inscriptionRepository.findByApprenant(apprenant)
+                .stream()
+                .flatMap(inscription ->
+                    sessionRepository.findByFormation(inscription.getFormation()).stream()
+                )
+                .map(this::mapToDTO)
+                .distinct()
+                .toList();
+    }
+
+    // =================== GET SECURE (FORMATEUR ou APPRENANT avec vérification) ===================
     public SessionEnLigneDTO getSessionSecure(Long id, String email) {
 
         SessionEnLigne session = sessionRepository.findById(id)
@@ -64,14 +126,11 @@ public class SessionEnLigneService {
         Utilisateur user = utilisateurRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        // APPRENANT check seulement
         if ("APPRENANT".equals(user.getRole().getNom())) {
-
             boolean inscrit = inscriptionRepository.existsByApprenantAndFormation(
                     user,
                     session.getFormation()
             );
-
             if (!inscrit) {
                 throw new RuntimeException("Accès refusé : vous devez être inscrit");
             }
@@ -126,6 +185,7 @@ public class SessionEnLigneService {
         return SessionEnLigneDTO.builder()
                 .id(session.getId())
                 .formationId(session.getFormation().getId())
+                .formationTitre(session.getFormation().getTitre())
                 .titre(session.getTitre())
                 .lienReunion(session.getLienReunion())
                 .statut(session.getStatut().name())

@@ -21,6 +21,5 @@ public class Role {
     @Size(min = 3, max = 50, message = "Le nom du rôle doit contenir entre 3 et 50 caractères")
     private String nom;
 
-    // Optionnel : si tu veux plus tard ajouter une description
-    // private String description;
+    
 }

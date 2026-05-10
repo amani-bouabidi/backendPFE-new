@@ -5,13 +5,11 @@ import com.ira.formation.services.AttestationService;
 
 import lombok.RequiredArgsConstructor;
 
-import org.springframework.core.io.*;
 import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.File;
 import java.util.List;
 
 @RestController
@@ -51,24 +49,19 @@ public class AttestationController {
     // ================= DOWNLOAD SECURE =================
     @GetMapping("/download/{id}")
     @PreAuthorize("hasAnyRole('APPRENANT','ADMIN')")
-    public ResponseEntity<Resource> download(
+    public ResponseEntity<byte[]> download(
             @PathVariable Long id,
             Authentication auth
     ) throws Exception {
 
-        var att = attestationService.getAllAttestations().stream()
-                .filter(a -> a.getId().equals(id))
-                .findFirst()
-                .orElseThrow(() -> new RuntimeException("Attestation not found"));
-
-        // file path
-        File file = new File(System.getProperty("user.dir") + "/" + att.getFilePath());
-        Resource resource = new UrlResource(file.toURI());
+        // ✅ PDF regénéré à la volée depuis les données en BD
+        // Le design est TOUJOURS garanti, indépendamment du disque
+        byte[] pdfBytes = attestationService.generatePdfBytes(id);
 
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
-                .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=attestation.pdf")
-                .body(resource);
+                .header(HttpHeaders.CONTENT_DISPOSITION, "inline; filename=attestation.pdf")
+                .header(HttpHeaders.CONTENT_LENGTH, String.valueOf(pdfBytes.length))
+                .body(pdfBytes);
     }
 }

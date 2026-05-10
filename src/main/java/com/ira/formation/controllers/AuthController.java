@@ -16,7 +16,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.http.ResponseEntity;
 
-import java.util.Optional;
 
 @RestController
 @RequestMapping("/api/auth")
@@ -58,7 +57,9 @@ public class AuthController {
         return new AuthResponseDTO(
                 accessToken,
                 refreshToken.getToken(),
-                utilisateur.getRole().getNom()
+                utilisateur.getRole().getNom(),
+                utilisateur.getNom(),
+                utilisateur.getPrenom()
         );
     }
 
@@ -81,7 +82,9 @@ public class AuthController {
                 new AuthResponseDTO(
                         newAccessToken,
                         refreshToken.getToken(),
-                        refreshToken.getUtilisateur().getRole().getNom()
+                        refreshToken.getUtilisateur().getRole().getNom(),
+                        refreshToken.getUtilisateur().getNom(),
+                        refreshToken.getUtilisateur().getPrenom()
                 )
         );
     }

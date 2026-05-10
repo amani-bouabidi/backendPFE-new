@@ -1,13 +1,21 @@
 package com.ira.formation.services;
 
 import com.ira.formation.dto.ProgressDTO;
+import com.ira.formation.dto.ProgressForAdminDTO;
 import com.ira.formation.dto.ProgressForFormateurDTO;
-import com.ira.formation.entities.*;
+import com.ira.formation.entities.Utilisateur;
+import com.ira.formation.entities.Formation;
+import com.ira.formation.entities.Module;
+import com.ira.formation.entities.Progress;
+import com.ira.formation.entities.ModuleCompletion;
 import com.ira.formation.repositories.*;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Service
@@ -19,8 +27,11 @@ public class ProgressService {
     private final ModuleRepository moduleRepository;
     private final ModuleCompletionRepository moduleCompletionRepository;
     private final ProgressRepository progressRepository;
+    private final NotificationService notificationService;
+    private final InscriptionRepository inscriptionRepository;
 
-    // =================== COMPLETE MODULE ===================
+    // =================== APPRENANT: COMPLETE MODULE ===================
+    @Transactional
     public ProgressDTO completeModule(String email, Long formationId, Long moduleId) {
 
         Utilisateur user = utilisateurRepository.findByEmail(email)
@@ -29,30 +40,58 @@ public class ProgressService {
         Formation formation = formationRepository.findById(formationId)
                 .orElseThrow(() -> new RuntimeException("Formation non trouvée"));
 
-        com.ira.formation.entities.Module module = moduleRepository.findById(moduleId)
+        Module module = moduleRepository.findById(moduleId)
                 .orElseThrow(() -> new RuntimeException("Module non trouvé"));
 
-        // 🔐 check module appartient à formation
         if (!module.getFormation().getId().equals(formationId)) {
             throw new RuntimeException("Module n'appartient pas à cette formation");
         }
 
-        // 🔥 éviter duplication
         if (!moduleCompletionRepository.existsByApprenantAndModule(user, module)) {
-
             ModuleCompletion mc = ModuleCompletion.builder()
                     .apprenant(user)
                     .module(module)
                     .completed(true)
                     .build();
-
             moduleCompletionRepository.save(mc);
         }
 
-        return calculateProgress(user, formation);
+        ProgressDTO progress = calculateProgress(user, formation);
+
+        // ✅ Persister / mettre à jour dans la table progress
+        Progress record = progressRepository
+                .findByApprenantAndFormation(user, formation)
+                .orElse(Progress.builder()
+                        .apprenant(user)
+                        .formation(formation)
+                        .build());
+
+        // ── Notification admins : UNE SEULE FOIS quand 100% est atteint ──
+        boolean wasAlreadyCompleted = record.getPercentage() >= 100;
+        record.setPercentage(progress.getPercentage());
+        record.setLastModuleId(moduleId);
+        record.setUpdatedAt(LocalDateTime.now());
+        progressRepository.save(record);
+
+        if (progress.isCompleted() && !wasAlreadyCompleted) {
+            String msg = "🎓 L'apprenant " + user.getPrenom() + " " + user.getNom()
+                    + " a atteint 100% dans la formation « "
+                    + formation.getTitre() + " ». Il peut maintenant recevoir son attestation.";
+            utilisateurRepository.findByRoleNom("ADMIN").forEach(admin ->
+                notificationService.createNotification(admin, msg)
+            );
+        }
+
+        // ── Retourner avec le moduleId correct ──────────────────────
+        return ProgressDTO.builder()
+                .formationId(formation.getId())
+                .moduleId(moduleId)
+                .percentage(progress.getPercentage())
+                .completed(progress.isCompleted())
+                .build();
     }
 
-    // =================== GET PROGRESS ===================
+    // =================== APPRENANT: GET MY PROGRESS ===================
     public ProgressDTO getMyProgress(String email, Long formationId) {
 
         Utilisateur user = utilisateurRepository.findByEmail(email)
@@ -61,10 +100,23 @@ public class ProgressService {
         Formation formation = formationRepository.findById(formationId)
                 .orElseThrow(() -> new RuntimeException("Formation non trouvée"));
 
-        return calculateProgress(user, formation);
+        ProgressDTO calc = calculateProgress(user, formation);
+
+        // ✅ Lire le lastModuleId depuis la table progress (persisté par completeModule)
+        Long lastModuleId = progressRepository
+                .findByApprenantAndFormation(user, formation)
+                .map(Progress::getLastModuleId)
+                .orElse(null);
+
+        return ProgressDTO.builder()
+                .formationId(formation.getId())
+                .moduleId(lastModuleId)
+                .percentage(calc.getPercentage())
+                .completed(calc.isCompleted())
+                .build();
     }
 
-    // =================== FORMATEUR VIEW ===================
+    // =================== FORMATEUR: PROGRESSION PAR FORMATION ===================
     public List<ProgressForFormateurDTO> getProgressByFormation(String email, Long formationId) {
 
         Utilisateur formateur = utilisateurRepository.findByEmail(email)
@@ -73,39 +125,124 @@ public class ProgressService {
         Formation formation = formationRepository.findById(formationId)
                 .orElseThrow(() -> new RuntimeException("Formation non trouvée"));
 
-        // 🔴 أهم سطر (الحماية)
         if (!formation.getFormateur().getId().equals(formateur.getId())) {
             throw new RuntimeException("Accès refusé: ce n'est pas votre formation");
         }
 
-        List<Progress> progressList = progressRepository.findByFormation(formation);
-
-        return progressList.stream().map(p ->
-                ProgressForFormateurDTO.builder()
-                        .apprenantId(p.getApprenant().getId())
-                        .apprenantNom(p.getApprenant().getNom())
-                        .apprenantPrenom(p.getApprenant().getPrenom())
-                        .formationId(formation.getId())
-                        .percentage(p.getPercentage())
-                        .completed(p.getPercentage() >= 100)
-                        .build()
-        ).toList();
+        // ✅ Tous les apprenants inscrits, calculé depuis module_completion
+        return inscriptionRepository.findAll().stream()
+                .filter(insc -> insc.getFormation().getId().equals(formationId))
+                .map(insc -> {
+                    Utilisateur apprenant = insc.getApprenant();
+                    ProgressDTO calc = calculateProgress(apprenant, formation);
+                    return ProgressForFormateurDTO.builder()
+                            .apprenantId(apprenant.getId())
+                            .apprenantNom(apprenant.getNom())
+                            .apprenantPrenom(apprenant.getPrenom())
+                            .formationId(formation.getId())
+                            .percentage(calc.getPercentage())
+                            .completed(calc.isCompleted())
+                            .build();
+                }).toList();
     }
 
+    // =================== ADMIN: TOUTES LES PROGRESSIONS ===================
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<ProgressForAdminDTO> getAllProgressForAdmin() {
+
+        // ✅ Calculé en temps réel depuis module_completion (source de vérité)
+        return inscriptionRepository.findAll().stream().map(insc -> {
+            Utilisateur apprenant = insc.getApprenant();
+            Formation formation = insc.getFormation();
+            ProgressDTO calc = calculateProgress(apprenant, formation);
+            return ProgressForAdminDTO.builder()
+                    .apprenantId(apprenant.getId())
+                    .apprenantNom(apprenant.getNom())
+                    .apprenantPrenom(apprenant.getPrenom())
+                    .apprenantEmail(apprenant.getEmail())
+                    .formationId(formation.getId())
+                    .formationTitre(formation.getTitre())
+                    .formateurNom(formation.getFormateur() != null
+                            ? formation.getFormateur().getNom() : "—")
+                    .percentage(calc.getPercentage())
+                    .completed(calc.isCompleted())
+                    .build();
+        }).toList();
+    }
+
+    // =================== ADMIN: PROGRESSIONS D'UNE FORMATION SPÉCIFIQUE ===================
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<ProgressForAdminDTO> getProgressByFormationForAdmin(Long formationId) {
+
+        Formation formation = formationRepository.findById(formationId)
+                .orElseThrow(() -> new RuntimeException("Formation non trouvée"));
+
+        // ✅ Tous les apprenants inscrits, calculé depuis module_completion
+        return inscriptionRepository.findAll().stream()
+                .filter(insc -> insc.getFormation().getId().equals(formationId))
+                .map(insc -> {
+                    Utilisateur apprenant = insc.getApprenant();
+                    ProgressDTO calc = calculateProgress(apprenant, formation);
+                    return ProgressForAdminDTO.builder()
+                            .apprenantId(apprenant.getId())
+                            .apprenantNom(apprenant.getNom())
+                            .apprenantPrenom(apprenant.getPrenom())
+                            .apprenantEmail(apprenant.getEmail())
+                            .formationId(formation.getId())
+                            .formationTitre(formation.getTitre())
+                            .formateurNom(formation.getFormateur() != null
+                                    ? formation.getFormateur().getNom() : "—")
+                            .percentage(calc.getPercentage())
+                            .completed(calc.isCompleted())
+                            .build();
+                }).toList();
+    }
+
+    // =================== ADMIN: PROGRESSIONS D'UN APPRENANT SPÉCIFIQUE ===================
+    @PreAuthorize("hasRole('ADMIN')")
+    public List<ProgressForAdminDTO> getProgressByApprenantForAdmin(Long apprenantId) {
+
+        Utilisateur apprenant = utilisateurRepository.findById(apprenantId)
+                .orElseThrow(() -> new RuntimeException("Apprenant non trouvé"));
+
+        // ✅ Toutes les formations auxquelles l'apprenant est inscrit, calculé depuis module_completion
+        return inscriptionRepository.findByApprenant(apprenant).stream()
+                .map(insc -> {
+                    Formation formation = insc.getFormation();
+                    ProgressDTO calc = calculateProgress(apprenant, formation);
+                    return ProgressForAdminDTO.builder()
+                            .apprenantId(apprenant.getId())
+                            .apprenantNom(apprenant.getNom())
+                            .apprenantPrenom(apprenant.getPrenom())
+                            .apprenantEmail(apprenant.getEmail())
+                            .formationId(formation.getId())
+                            .formationTitre(formation.getTitre())
+                            .formateurNom(formation.getFormateur() != null
+                                    ? formation.getFormateur().getNom() : "—")
+                            .percentage(calc.getPercentage())
+                            .completed(calc.isCompleted())
+                            .build();
+                }).toList();
+    }
     // =================== CORE LOGIC ===================
     private ProgressDTO calculateProgress(Utilisateur user, Formation formation) {
 
         long totalModules = moduleRepository.findByFormation(formation).size();
 
         if (totalModules == 0) {
-            throw new RuntimeException("Pas de modules");
+            return ProgressDTO.builder()
+                    .formationId(formation.getId())
+                    .moduleId(null)
+                    .percentage(0.0)
+                    .completed(false)
+                    .build();
         }
 
         long completedModules =
                 moduleCompletionRepository.countByApprenant_IdAndModule_Formation_IdAndCompletedTrue(
-                	    user.getId(),
-                	    formation.getId()
-                	);
+                        user.getId(),
+                        formation.getId()
+                );
 
         double percentage = ((double) completedModules / totalModules) * 100;
 
@@ -116,8 +253,8 @@ public class ProgressService {
                 .completed(percentage >= 100)
                 .build();
     }
-    
-    
+
+    // =================== APPRENANT: REPRENDRE PROGRESSION ===================
     public Long getLastModule(String email, Long formationId) {
 
         Utilisateur user = utilisateurRepository.findByEmail(email)

@@ -25,16 +25,16 @@ public class EventService {
     private final UtilisateurRepository utilisateurRepository;
     private final InscriptionRepository inscriptionRepository;
 
-    // =================== CREATE EVENT ===================
+    // =================== CREATE EVENT (FORMATEUR ONLY) ===================
     @PreAuthorize("hasRole('FORMATEUR')")
-    public EventDTO creerEvent(EventDTO dto, String emailFormateur){
+    public EventDTO creerEvent(EventDTO dto, String emailFormateur) {
 
         Formation formation = formationRepository.findById(dto.getFormationId())
                 .orElseThrow(() -> new RuntimeException("Formation inexistante"));
 
-        // 🔒 check formateur
+        // Vérification: le formateur ne peut créer des événements que pour SES formations
         if (!formation.getFormateur().getEmail().equals(emailFormateur)) {
-            throw new RuntimeException("Accès refusé");
+            throw new RuntimeException("Accès refusé : cette formation ne vous appartient pas");
         }
 
         Event event = new Event();
@@ -47,31 +47,49 @@ public class EventService {
         return mapToDTO(eventRepository.save(event));
     }
 
-    // =================== GET EVENTS FOR APPRENANT ===================
-    public List<EventDTO> getMesEvents(String email){
+    // =================== GET EVENTS FOR APPRENANT (via inscriptions) ===================
+    @PreAuthorize("hasRole('APPRENANT')")
+    public List<EventDTO> getMesEvents(String email) {
 
         Utilisateur user = utilisateurRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("Utilisateur non trouvé"));
 
-        // 🔥 أهم logique في فكرتك
+        // Retourne les événements de toutes les formations auxquelles l'apprenant est inscrit
         return inscriptionRepository.findByApprenant(user)
                 .stream()
-                .flatMap(inscription -> 
+                .flatMap(inscription ->
                         eventRepository.findByFormation(inscription.getFormation()).stream()
                 )
                 .map(this::mapToDTO)
                 .collect(Collectors.toList());
     }
 
-    // =================== DTO ===================
-    public EventDTO mapToDTO(Event event){
-    	return EventDTO.builder()
-    	        .id(event.getId())
-    	        .title(event.getTitle())
-    	        .date(event.getDate())
-    	        .time(event.getTime())
-    	        .description(event.getDescription())
-    	        .formationId(event.getFormation().getId())
-    	        .build();
+    // =================== BUG FIX N°9: GET EVENTS FOR FORMATEUR (via SES formations) ===================
+    @PreAuthorize("hasRole('FORMATEUR')")
+    public List<EventDTO> getMesEventsFormateur(String email) {
+
+        Utilisateur formateur = utilisateurRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("Formateur non trouvé"));
+
+        // Récupère les événements de toutes les formations dont il est responsable
+        return formationRepository.findByFormateur(formateur)
+                .stream()
+                .flatMap(formation ->
+                        eventRepository.findByFormation(formation).stream()
+                )
+                .map(this::mapToDTO)
+                .collect(Collectors.toList());
+    }
+
+    // =================== MAPPER DTO ===================
+    public EventDTO mapToDTO(Event event) {
+        return EventDTO.builder()
+                .id(event.getId())
+                .title(event.getTitle())
+                .date(event.getDate())
+                .time(event.getTime())
+                .description(event.getDescription())
+                .formationId(event.getFormation().getId())
+                .build();
     }
 }

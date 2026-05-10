@@ -144,7 +144,7 @@ public class DocumentService {
 
         // ================= FILE =================
 
-        File file = new File(doc.getFilePath());
+        File file = new File(System.getProperty("user.dir") + "/" + doc.getFilePath());
 
         if (!file.exists()) {
             throw new RuntimeException("Fichier introuvable");
@@ -155,7 +155,7 @@ public class DocumentService {
         return ResponseEntity.ok()
                 .contentType(MediaType.APPLICATION_PDF)
                 .header(HttpHeaders.CONTENT_DISPOSITION,
-                        "attachment; filename=\"" + doc.getNom() + "\"")
+                        "inline; filename=\"" + doc.getNom() + "\"")
                 .body(resource);
     }
     // =================== HELPER ===================

@@ -23,8 +23,7 @@ public class Module {
 
     private String titre;
 
-    private String description; // لازمها تكون موجودة
-
+    private String description; 
     @ManyToOne
     @JoinColumn(name = "formation_id")
     private Formation formation;

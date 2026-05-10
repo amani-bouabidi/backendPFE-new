@@ -5,9 +5,7 @@ import com.ira.formation.dto.UtilisateurUpdateDTO;
 import com.ira.formation.dto.UtilisateurResponseDTO;
 import com.ira.formation.entities.Role;
 import com.ira.formation.entities.Utilisateur;
-import com.ira.formation.repositories.RefreshTokenRepository;
-import com.ira.formation.repositories.RoleRepository;
-import com.ira.formation.repositories.UtilisateurRepository;
+import com.ira.formation.repositories.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -22,7 +20,15 @@ public class UtilisateurService {
     private final UtilisateurRepository utilisateurRepository;
     private final RoleRepository roleRepository;
     private final RefreshTokenRepository refreshTokenRepository;
-    private final PasswordEncoder passwordEncoder; // ✅ IMPORTANT
+    private final PasswordEncoder passwordEncoder;
+
+    // FIX BUG #7 — ajout des repositories nécessaires pour supprimer les données liées
+    private final InscriptionRepository inscriptionRepository;
+    private final ProgressRepository progressRepository;
+    private final FavoriteRepository favoriteRepository;
+    private final AttestationRepository attestationRepository;
+    private final NotificationRepository notificationRepository;
+    private final ModuleCompletionRepository moduleCompletionRepository;
 
     // =====================================================
     // CREATE FORMATEUR
@@ -41,7 +47,7 @@ public class UtilisateurService {
                 .nom(dto.getNom())
                 .prenom(dto.getPrenom())
                 .email(dto.getEmail())
-                .password(passwordEncoder.encode(dto.getPassword())) // ✅ HASH
+                .password(passwordEncoder.encode(dto.getPassword()))
                 .role(role)
                 .actif(true)
                 .build();
@@ -74,7 +80,7 @@ public class UtilisateurService {
         }
 
         if (dto.getPassword() != null && !dto.getPassword().isBlank()) {
-            user.setPassword(passwordEncoder.encode(dto.getPassword())); // ✅ HASH
+            user.setPassword(passwordEncoder.encode(dto.getPassword()));
         }
 
         return mapToDTO(utilisateurRepository.save(user));
@@ -93,11 +99,14 @@ public class UtilisateurService {
             throw new IllegalArgumentException("Ce n'est pas un formateur");
         }
 
+        refreshTokenRepository.deleteByUtilisateurId(id);
         utilisateurRepository.delete(user);
     }
 
     // =====================================================
-    // DELETE APPRENANT
+    // DELETE APPRENANT  ← FIX BUG #7
+    // Supprime toutes les données liées avant de supprimer l'utilisateur
+    // pour éviter les erreurs de contrainte FK
     // =====================================================
     @Transactional
     public void supprimerApprenant(Long id) {
@@ -109,7 +118,46 @@ public class UtilisateurService {
             throw new IllegalArgumentException("Ce n'est pas un apprenant");
         }
 
+        // 1. Supprimer les tokens de rafraîchissement
         refreshTokenRepository.deleteByUtilisateurId(id);
+
+        // 2. Supprimer les notifications
+        notificationRepository.deleteAll(
+            notificationRepository.findByUtilisateurIdOrderByCreatedAtDesc(id)
+        );
+
+        // 3. Supprimer les favoris
+        favoriteRepository.deleteAll(
+            favoriteRepository.findByUser(user)
+        );
+
+        // 4. Supprimer les complétions de modules
+        moduleCompletionRepository.deleteAll(
+            moduleCompletionRepository.findAll().stream()
+                .filter(mc -> mc.getApprenant().getId().equals(id))
+                .toList()
+        );
+
+        // 5. Supprimer les progressions
+        progressRepository.deleteAll(
+            progressRepository.findAll().stream()
+                .filter(p -> p.getApprenant().getId().equals(id))
+                .toList()
+        );
+
+        // 6. Supprimer les attestations
+        attestationRepository.deleteAll(
+            attestationRepository.findAll().stream()
+                .filter(a -> a.getApprenant().getId().equals(id))
+                .toList()
+        );
+
+        // 7. Supprimer les inscriptions (test de validation)
+        inscriptionRepository.deleteAll(
+            inscriptionRepository.findByApprenant(user)
+        );
+
+        // 8. Supprimer l'utilisateur
         utilisateurRepository.delete(user);
     }
 

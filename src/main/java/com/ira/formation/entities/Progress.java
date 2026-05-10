@@ -22,9 +22,7 @@ public class Progress {
     @ManyToOne
     private Formation formation;
 
-    private double percentage; // نسبة التقدم
-
-    private Long lastModuleId; // وين وقف
-
+    private double percentage; 
+    private Long lastModuleId;
     private LocalDateTime updatedAt;
 }
